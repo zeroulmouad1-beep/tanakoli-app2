@@ -1,10 +1,58 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { fetchRecentTransactions, type Transaction } from "@/lib/admin-utils"
-import { Activity, TrendingUp, TrendingDown, Send } from "lucide-react"
+import {
+  Activity,
+  Receipt,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react"
+import {
+  AnimatedNumber,
+  EmptyState,
+  Money,
+  PanelHead,
+  Skeleton,
+  StatusPill,
+  Currency,
+  formatNumber,
+} from "@/components/admin/ui"
+import { EASE_OUT, fadeUp, rowIn } from "@/components/admin/motion"
 
-export function AdminTransactionsLog() {
+interface TransactionStatsPayload {
+  count: number
+  todayVolume: number
+  loading: boolean
+}
+
+interface AdminTransactionsLogProps {
+  onStats?: (stats: TransactionStatsPayload) => void
+}
+
+const transactionTypes = [
+  { value: "all", label: "All Transactions" },
+  { value: "fare_deduction", label: "Fare Deductions" },
+  { value: "balance_recharge", label: "Driver Recharges" },
+  { value: "admin_transfer", label: "Admin Transfers" },
+  { value: "ticket_purchase", label: "Ticket Purchases" },
+]
+
+/** True when a (Firestore) timestamp falls on the current calendar day. */
+function isToday(timestamp: any) {
+  if (!timestamp) return false
+  const date = timestamp.toDate?.() ?? new Date(timestamp)
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return false
+  const now = new Date()
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  )
+}
+
+export function AdminTransactionsLog({ onStats }: AdminTransactionsLogProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [filter, setFilter] = useState<string>("all")
@@ -29,6 +77,46 @@ export function AdminTransactionsLog() {
   const filteredTransactions =
     filter === "all" ? transactions : transactions.filter((t) => t.type === filter)
 
+  // Today's settled volume — used by the "Today's Volume" stat card.
+  const todayVolume = useMemo(
+    () =>
+      transactions.reduce(
+        (sum, tx) => (isToday(tx.timestamp) ? sum + tx.amount : sum),
+        0
+      ),
+    [transactions]
+  )
+
+  // Report counters upwards for the stats cards (presentation only).
+  const statsRef = useRef(onStats)
+  useEffect(() => {
+    statsRef.current = onStats
+  })
+  useEffect(() => {
+    statsRef.current?.({
+      count: transactions.length,
+      todayVolume,
+      loading: isLoading,
+    })
+  }, [transactions, todayVolume, isLoading])
+
+  // Visual only: briefly highlight rows that have just arrived.
+  const seenIds = useRef<Set<string>>(new Set())
+  const [flashIds, setFlashIds] = useState<string[]>([])
+
+  useEffect(() => {
+    const fresh = transactions
+      .filter((tx) => seenIds.current.size > 0 && !seenIds.current.has(tx.id))
+      .map((tx) => tx.id)
+
+    transactions.forEach((tx) => seenIds.current.add(tx.id))
+
+    if (fresh.length === 0) return
+    setFlashIds(fresh)
+    const timer = setTimeout(() => setFlashIds([]), 1600)
+    return () => clearTimeout(timer)
+  }, [transactions])
+
   // Get transaction type display
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -45,10 +133,13 @@ export function AdminTransactionsLog() {
   // Get transaction icon
   const getTypeIcon = (type: string) => {
     if (type.includes("deduction") || type.includes("purchase")) {
-      return <TrendingDown className="w-4 h-4 text-red-400" />
+      return <TrendingDown className="w-3.5 h-3.5" strokeWidth={2.4} />
     }
-    return <TrendingUp className="w-4 h-4 text-emerald-400" />
+    return <TrendingUp className="w-3.5 h-3.5" strokeWidth={2.4} />
   }
+
+  const getTypeDirection = (type: string): "in" | "out" =>
+    type.includes("deduction") || type.includes("purchase") ? "out" : "in"
 
   // Format timestamp
   const formatTime = (timestamp: any) => {
@@ -74,177 +165,260 @@ export function AdminTransactionsLog() {
     }
   }
 
-  const transactionTypes = [
-    { value: "all", label: "All Transactions" },
-    { value: "fare_deduction", label: "Fare Deductions" },
-    { value: "balance_recharge", label: "Driver Recharges" },
-    { value: "admin_transfer", label: "Admin Transfers" },
-    { value: "ticket_purchase", label: "Ticket Purchases" },
-  ]
+  const countFor = (value: string) =>
+    value === "all"
+      ? transactions.length
+      : transactions.filter((t) => t.type === value).length
 
   return (
-    <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 shadow-lg">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-cyan-400" />
-          <h3 className="text-lg font-semibold text-white">Recent Transactions</h3>
-          <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-300">
-            Last 50
-          </span>
-        </div>
-        {!isLoading && (
-          <p className="text-sm text-slate-400">{filteredTransactions.length} transactions</p>
-        )}
-      </div>
+    <motion.div className="adm-card adm-card--hover" variants={fadeUp}>
+      <PanelHead
+        tone="violet"
+        icon={<Activity className="w-[18px] h-[18px]" strokeWidth={2.2} />}
+        title="Recent Transactions"
+        trailing={
+          <span className="adm-chip">Last 50</span>
+        }
+      />
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-        {transactionTypes.map((type) => (
-          <button
-            key={type.value}
-            onClick={() => setFilter(type.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              filter === type.value
-                ? "bg-cyan-500 text-white"
-                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-            }`}
-          >
-            {type.label}
-          </button>
-        ))}
+      <div className="adm-filters">
+        <div className="adm-segmented adm-segmented--scroll">
+          {transactionTypes.map((type) => {
+            const active = filter === type.value
+            return (
+              <button
+                key={type.value}
+                type="button"
+                onClick={() => setFilter(type.value)}
+                data-active={active}
+                aria-pressed={active}
+                className="adm-segmented__btn"
+              >
+                {active && (
+                  <motion.span
+                    layoutId="adm-filter-indicator"
+                    className="adm-segmented__indicator"
+                    transition={{
+                      type: "spring",
+                      stiffness: 460,
+                      damping: 40,
+                      mass: 0.7,
+                    }}
+                  />
+                )}
+                <span className="adm-segmented__label">{type.label}</span>
+                <span className="adm-segmented__count">{countFor(type.value)}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {!isLoading && (
+          <p className="adm-filters__count adm-num">
+            {filteredTransactions.length} transactions
+          </p>
+        )}
       </div>
 
       {/* Loading State */}
       {isLoading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <div className="inline-block w-8 h-8 border-4 border-slate-600 border-t-cyan-400 rounded-full animate-spin mb-3" />
-            <p className="text-slate-400">Loading transactions...</p>
-          </div>
+        <div className="adm-card__body adm-stack">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="adm-skeleton--row" />
+          ))}
         </div>
       )}
 
-      {/* Transactions Table */}
-      {!isLoading && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="text-left py-3 px-3 text-slate-400 font-semibold">Type</th>
-                <th className="text-left py-3 px-3 text-slate-400 font-semibold">User</th>
-                <th className="text-right py-3 px-3 text-slate-400 font-semibold">Amount</th>
-                <th className="text-left py-3 px-3 text-slate-400 font-semibold">Status</th>
-                <th className="text-left py-3 px-3 text-slate-400 font-semibold">Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTransactions.length > 0 ? (
-                filteredTransactions.map((tx) => (
-                  <tr
-                    key={tx.id}
-                    className="border-b border-slate-700 hover:bg-slate-700/30 transition-colors"
-                  >
-                    {/* Type */}
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
-                        {getTypeIcon(tx.type)}
-                        <span className="text-slate-200">{getTypeLabel(tx.type)}</span>
-                      </div>
-                    </td>
+      {/* Transactions */}
+      {!isLoading && filteredTransactions.length === 0 && (
+        <div className="adm-card__body">
+          <EmptyState
+            icon={<Receipt className="w-8 h-8" strokeWidth={1.5} />}
+            title="No transactions found"
+            description="Try another filter — activity appears here in real time."
+          />
+        </div>
+      )}
 
-                    {/* User */}
-                    <td className="py-3 px-3">
-                      <div className="flex flex-col">
-                        <span className="text-slate-200 font-medium">
-                          {tx.userName || tx.userId.slice(0, 8)}...
-                        </span>
-                        {tx.driverPhone && (
-                          <span className="text-xs text-slate-400">
-                            Driver: {tx.driverPhone}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Amount */}
-                    <td className="py-3 px-3 text-right">
-                      <div className="flex flex-col items-end">
-                        <span
-                          className={`font-semibold font-mono ${
-                            tx.type.includes("deduction") || tx.type.includes("purchase")
-                              ? "text-red-400"
-                              : "text-emerald-400"
-                          }`}
-                        >
-                          {tx.type.includes("deduction") || tx.type.includes("purchase")
-                            ? "-"
-                            : "+"}{" "}
-                          {tx.amount.toFixed(2)} د.ج
-                        </span>
-                        {tx.newBalance !== undefined && (
-                          <span className="text-xs text-slate-400">
-                            New: {tx.newBalance.toFixed(2)} د.ج
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Status */}
-                    <td className="py-3 px-3">
+      {!isLoading && filteredTransactions.length > 0 && (
+        <>
+          {/* -------------------------------------------------- Mobile cards */}
+          <ul className="adm-card__body adm-list adm-only-mobile" role="list">
+            <AnimatePresence>
+              {filteredTransactions.map((tx, index) => (
+                <motion.li
+                  key={tx.id}
+                  className="adm-tx"
+                  data-flash={flashIds.includes(tx.id)}
+                  {...rowIn(index)}
+                >
+                  <div className="adm-tx__top">
+                    <span className="adm-tx__type">
                       <span
-                        className={`px-2 py-1 rounded text-xs font-medium ${
-                          tx.status === "completed"
-                            ? "bg-emerald-500/20 text-emerald-300"
-                            : "bg-yellow-500/20 text-yellow-300"
+                        className={`adm-type-icon adm-type-icon--${
+                          getTypeDirection(tx.type) === "out" ? "out" : "in"
                         }`}
                       >
-                        {tx.status}
+                        {getTypeIcon(tx.type)}
                       </span>
-                    </td>
+                      {getTypeLabel(tx.type)}
+                    </span>
 
-                    {/* Time */}
-                    <td className="py-3 px-3">
-                      <span className="text-slate-400 text-xs">
-                        {formatTime(tx.timestamp)}
+                    <span className="adm-tx__amount">
+                      <Money
+                        amount={tx.amount}
+                        direction={getTypeDirection(tx.type)}
+                        size="lg"
+                      />
+                      {tx.newBalance !== undefined && (
+                        <span className="adm-money__sub">
+                          New: {formatNumber(tx.newBalance, 2)}{" "}
+                          <Currency />
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  <span className="adm-tx__mid">
+                    <span className="adm-tx__user adm-iso" dir="auto">
+                      {tx.userName || `${tx.userId.slice(0, 8)}...`}
+                    </span>
+                    {tx.driverPhone && (
+                      <span className="adm-cell-user__meta adm-ltr">
+                        Driver: {tx.driverPhone}
                       </span>
-                    </td>
+                    )}
+                  </span>
+
+                  <span className="adm-tx__foot">
+                    <StatusPill status={tx.status} />
+                    <span className="adm-time">{formatTime(tx.timestamp)}</span>
+                  </span>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+
+          {/* ------------------------------------------------- Desktop table */}
+          <div className="adm-table-wrap adm-only-desktop">
+            <div className="adm-table-scroll">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>User</th>
+                    <th style={{ textAlign: "end" }}>Amount</th>
+                    <th>Status</th>
+                    <th>Time</th>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center">
-                    <p className="text-slate-400">No transactions found</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  <AnimatePresence>
+                    {filteredTransactions.map((tx, index) => (
+                      <motion.tr
+                        key={tx.id}
+                        className="adm-row"
+                        data-flash={flashIds.includes(tx.id)}
+                        {...rowIn(index)}
+                      >
+                        {/* Type */}
+                        <td>
+                          <span className="adm-cell-type">
+                            <span
+                              className={`adm-type-icon adm-type-icon--${
+                                getTypeDirection(tx.type) === "out" ? "out" : "in"
+                              }`}
+                            >
+                              {getTypeIcon(tx.type)}
+                            </span>
+                            {getTypeLabel(tx.type)}
+                          </span>
+                        </td>
+
+                        {/* User */}
+                        <td>
+                          <span className="adm-cell-user">
+                            <span className="adm-cell-user__name">
+                              <span className="adm-iso" dir="auto">
+                                {tx.userName || `${tx.userId.slice(0, 8)}...`}
+                              </span>
+                            </span>
+                            {tx.driverPhone && (
+                              <span className="adm-cell-user__meta adm-ltr">
+                                Driver: {tx.driverPhone}
+                              </span>
+                            )}
+                          </span>
+                        </td>
+
+                        {/* Amount */}
+                        <td style={{ textAlign: "end" }}>
+                          <span className="adm-cell-amount">
+                            <Money
+                              amount={tx.amount}
+                              direction={getTypeDirection(tx.type)}
+                            />
+                            {tx.newBalance !== undefined && (
+                              <span className="adm-money__sub">
+                                New: {formatNumber(tx.newBalance, 2)}{" "}
+                                <Currency />
+                              </span>
+                            )}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td>
+                          <StatusPill status={tx.status} />
+                        </td>
+
+                        {/* Time */}
+                        <td>
+                          <span className="adm-time">
+                            {formatTime(tx.timestamp)}
+                          </span>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Stats Summary */}
       {!isLoading && filteredTransactions.length > 0 && (
-        <div className="mt-6 pt-6 border-t border-slate-700 grid grid-cols-3 gap-4">
-          <div className="p-3 bg-slate-700/50 rounded-lg">
-            <p className="text-xs text-slate-400 mb-1">Total Transactions</p>
-            <p className="text-lg font-bold text-white">{filteredTransactions.length}</p>
+        <div className="adm-summary">
+          <div className="adm-summary__item">
+            <span className="adm-summary__label">Total Transactions</span>
+            <span className="adm-summary__value">
+              <AnimatedNumber value={filteredTransactions.length} />
+            </span>
           </div>
-          <div className="p-3 bg-slate-700/50 rounded-lg">
-            <p className="text-xs text-slate-400 mb-1">Total Volume</p>
-            <p className="text-lg font-bold text-emerald-400">
-              +{filteredTransactions
-                .reduce((sum, tx) => sum + tx.amount, 0)
-                .toFixed(2)} د.ج
-            </p>
+          <div className="adm-summary__item">
+            <span className="adm-summary__label">Total Volume</span>
+            <span className="adm-summary__value">
+              <Money
+                amount={filteredTransactions.reduce(
+                  (sum, tx) => sum + tx.amount,
+                  0
+                )}
+                direction="in"
+                animate
+              />
+            </span>
           </div>
-          <div className="p-3 bg-slate-700/50 rounded-lg">
-            <p className="text-xs text-slate-400 mb-1">Last Activity</p>
-            <p className="text-sm text-slate-300">
+          <div className="adm-summary__item">
+            <span className="adm-summary__label">Last Activity</span>
+            <span className="adm-summary__value adm-summary__value--text">
               {formatTime(filteredTransactions[0]?.timestamp)}
-            </p>
+            </span>
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }

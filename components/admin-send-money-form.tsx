@@ -1,10 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { sendMoneyToDriver } from "@/lib/admin-utils"
 import { rtdb } from "@/lib/firebase"
 import { ref, onValue } from "firebase/database"
-import { Send, AlertCircle, CheckCircle } from "lucide-react"
+import { AlertCircle, CheckCircle, ChevronDown, Send } from "lucide-react"
+import { Currency, PanelHead } from "@/components/admin/ui"
+import { EASE_OUT, fadeUp, noticeIn } from "@/components/admin/motion"
 
 interface SendMoneyFormProps {
   preselectedDriver?: string
@@ -47,7 +50,6 @@ export function AdminSendMoneyForm({ preselectedDriver }: SendMoneyFormProps) {
       unsubscribe()
     }
   }, [])
-
 
   // Update form when preselected driver changes (from table selection)
   useEffect(() => {
@@ -110,47 +112,59 @@ export function AdminSendMoneyForm({ preselectedDriver }: SendMoneyFormProps) {
   }
 
   return (
-    <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 shadow-lg">
-      <div className="flex items-center gap-2 mb-6">
-        <Send className="w-5 h-5 text-emerald-400" />
-        <h3 className="text-lg font-semibold text-white">Send Money to Driver</h3>
-      </div>
+    <motion.div className="adm-card adm-card--hover" variants={fadeUp}>
+      <PanelHead
+        tone="brand"
+        icon={<Send className="w-[18px] h-[18px]" strokeWidth={2.2} />}
+        title="Send Money to Driver"
+      />
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="adm-card__body adm-form">
         {/* Driver Selection */}
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
+        <div className="adm-field">
+          <label className="adm-label" htmlFor="adm-driver-select">
             Select Driver
           </label>
-          <select
-            value={driverPhone}
-            onChange={(e) => {
-              setDriverPhone(e.target.value)
-              setSuccess(false)
-              setError("")
-            }}
-            disabled={isLoading || driversLoading}
-            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="">Choose a driver...</option>
-            {drivers.map((phone) => (
-              <option key={phone} value={phone}>
-                {phone}
-              </option>
-            ))}
-          </select>
+          <div className="adm-control">
+            <select
+              id="adm-driver-select"
+              value={driverPhone}
+              onChange={(e) => {
+                setDriverPhone(e.target.value)
+                setSuccess(false)
+                setError("")
+              }}
+              disabled={isLoading || driversLoading}
+              className="adm-select"
+            >
+              <option value="">Choose a driver...</option>
+              {drivers.map((phone) => (
+                <option key={phone} value={phone}>
+                  {phone}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className="adm-select__chevron w-4 h-4"
+              strokeWidth={2.2}
+            />
+          </div>
           {driversLoading && (
-            <p className="text-xs text-slate-400 mt-1">Loading drivers...</p>
+            <p className="adm-hint">
+              <span className="adm-spinner adm-spinner--xs" />
+              Loading drivers...
+            </p>
           )}
         </div>
 
         {/* Amount Input */}
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Amount (د.ج)
+        <div className="adm-field">
+          <label className="adm-label" htmlFor="adm-amount-input">
+            Amount (<Currency />)
           </label>
-          <div className="relative">
+          <div className="adm-control">
             <input
+              id="adm-amount-input"
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
@@ -159,71 +173,94 @@ export function AdminSendMoneyForm({ preselectedDriver }: SendMoneyFormProps) {
               min="0"
               max="10000"
               step="0.01"
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              inputMode="decimal"
+              dir="ltr"
+              className="adm-input adm-input--amount"
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">
-              د.ج
+            <span className="adm-affix">
+              <Currency />
             </span>
           </div>
         </div>
 
         {/* Preset Amounts */}
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Quick Select
-          </label>
-          <div className="grid grid-cols-4 gap-2">
+        <div className="adm-field">
+          <span className="adm-label">Quick Select</span>
+          <div className="adm-chips">
             {[100, 200, 500, 1000].map((preset) => (
               <button
                 key={preset}
                 type="button"
                 onClick={() => setAmount(preset.toString())}
                 disabled={isLoading || !driverPhone}
-                className="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg text-sm font-medium text-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                data-active={amount === preset.toString()}
+                className="adm-chips__btn"
               >
-                {preset}د.ج
+                <span className="adm-num">{preset}</span>
+                <span className="adm-chips__cur adm-ar" lang="ar" dir="rtl">
+                  د.ج
+                </span>
               </button>
             ))}
           </div>
         </div>
 
         {/* Error Message */}
-        {error && (
-          <div className="flex items-gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg gap-2">
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-red-300">{error}</p>
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {error && (
+            <motion.div
+              className="adm-notice adm-notice--error"
+              variants={noticeIn}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={{ duration: 0.24, ease: EASE_OUT }}
+            >
+              <AlertCircle className="w-4 h-4" strokeWidth={2.2} />
+              <p>{error}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Success Message */}
-        {success && (
-          <div className="flex items-gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg gap-2">
-            <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-emerald-300">
-              Money sent successfully to {driverPhone}
-            </p>
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {success && (
+            <motion.div
+              className="adm-notice adm-notice--success"
+              variants={noticeIn}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={{ duration: 0.24, ease: EASE_OUT }}
+            >
+              <CheckCircle className="w-4 h-4" strokeWidth={2.2} />
+              <p>Money sent successfully to {driverPhone}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Submit Button */}
-        <button
+        <motion.button
           type="submit"
           disabled={isLoading || !driverPhone || !amount || driversLoading}
-          className="w-full py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="adm-btn adm-btn--primary adm-btn--lg adm-btn--block"
+          data-success={success}
+          whileTap={{ scale: 0.985 }}
+          transition={{ duration: 0.16, ease: EASE_OUT }}
         >
           {isLoading ? (
             <>
-              <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span className="adm-spinner" />
               Processing...
             </>
           ) : (
             <>
-              <Send className="w-4 h-4" />
+              <Send className="w-4 h-4" strokeWidth={2.2} />
               Send Money
             </>
           )}
-        </button>
+        </motion.button>
       </form>
-    </div>
+    </motion.div>
   )
 }

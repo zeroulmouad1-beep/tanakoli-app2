@@ -12,7 +12,7 @@ const nextConfig = {
     }
     return config
   },
-  allowedDevOrigins: ['*.replit.dev', '*.replit.app'],
+  allowedDevOrigins: ['*.replit.dev', '*.replit.app', '*.e2b.app', '*.e2b.dev'],
   turbopack: {},
 }
 
