@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Lock, Eye, EyeOff } from "lucide-react"
+import { motion } from "framer-motion"
+import { AmbientBackdrop } from "./admin/ui"
+import { Lock, Eye, EyeOff, ShieldCheck } from "lucide-react"
 
 const ADMIN_PASSWORD = "admin123"
 
@@ -35,69 +37,97 @@ export function AdminPasswordGate({ onAuthenticated }: AdminPasswordGateProps) {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="w-full max-w-md">
-        <div className="bg-slate-800 rounded-lg border border-slate-700 shadow-2xl p-8">
-          {/* Header */}
-          <div className="flex items-center justify-center mb-8">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-3 rounded-lg">
-              <Lock className="w-6 h-6 text-white" />
+    <div className="adm-root" dir="ltr" lang="en">
+      <AmbientBackdrop />
+
+      <div className="adm-shell">
+        <div className="adm-gate">
+          <motion.div
+            className="adm-card adm-gate__card"
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {/* Header */}
+            <div className="adm-gate__mark">
+              <Lock className="w-6 h-6" strokeWidth={2.2} />
             </div>
-          </div>
 
-          <h1 className="text-2xl font-bold text-center text-white mb-2">
-            Admin Dashboard
-          </h1>
-          <p className="text-center text-slate-400 mb-8">
-            Enter your password to continue
-          </p>
+            <h1 className="adm-gate__title" style={{ marginTop: 20 }}>
+              Admin Dashboard
+            </h1>
+            <p className="adm-gate__sub" style={{ marginBottom: 26 }}>
+              Enter your password to continue
+            </p>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
-                  placeholder="Enter admin password"
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={isLoading}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
-                </button>
+            {/* Form */}
+            <form onSubmit={handleSubmit} style={{ display: "grid", gap: 18 }}>
+              <div>
+                <div className="adm-control">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
+                    placeholder="Enter admin password"
+                    className="adm-input"
+                    style={{ paddingRight: 52 }}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
+                    className="adm-eye-btn"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-[18px] h-[18px]" />
+                    ) : (
+                      <Eye className="w-[18px] h-[18px]" />
+                    )}
+                  </button>
+                </div>
+
+                {error && (
+                  <motion.p
+                    className="adm-gate__error"
+                    style={{ marginTop: 10 }}
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0, x: [0, -5, 5, -3, 0] }}
+                    transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    {error}
+                  </motion.p>
+                )}
               </div>
 
-              {error && (
-                <p className="mt-2 text-sm text-red-400">{error}</p>
-              )}
-            </div>
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isLoading || !password}
+                className="adm-btn adm-btn--primary adm-btn--lg"
+              >
+                {isLoading ? (
+                  <>
+                    <span className="adm-spinner" />
+                    Verifying...
+                  </>
+                ) : (
+                  "Unlock Admin Panel"
+                )}
+              </button>
+            </form>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading || !password}
-              className="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? "Verifying..." : "Unlock Admin Panel"}
-            </button>
-          </form>
-
-          {/* Footer */}
-          <p className="text-center text-slate-500 text-xs mt-8">
-            Secure Session • Session-only authentication
-          </p>
+            {/* Footer */}
+            <p className="adm-gate__foot" style={{ marginTop: 24 }}>
+              <ShieldCheck
+                className="w-3.5 h-3.5"
+                style={{ display: "inline-block", verticalAlign: "-2px", marginRight: 6 }}
+              />
+              Secure Session • Session-only authentication
+            </p>
+          </motion.div>
         </div>
       </div>
     </div>

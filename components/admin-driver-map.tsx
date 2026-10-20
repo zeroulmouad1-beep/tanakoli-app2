@@ -1,9 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { rtdb } from "@/lib/firebase"
 import { ref, onValue } from "firebase/database"
-import { Users } from "lucide-react"
+import {
+  Bus,
+  Clock,
+  MapPin,
+  Navigation,
+  Users,
+} from "lucide-react"
+import { EmptyState, PanelHead, Skeleton } from "@/components/admin/ui"
+import { fadeUp, rowIn } from "@/components/admin/motion"
 
 interface DriverLocation {
   lat: number
@@ -18,9 +27,19 @@ interface Driver {
 
 interface AdminDriverListProps {
   onDriverSelect?: (driverPhone: string) => void
+  onStats?: (stats: { count: number; loading: boolean }) => void
 }
 
-export function AdminDriverMap({ onDriverSelect }: AdminDriverListProps) {
+/** Short, deterministic avatar label for a phone-based identity. */
+function driverInitials(phone: string) {
+  const digits = phone.replace(/\D/g, "")
+  return digits.slice(-2) || "—"
+}
+
+export function AdminDriverMap({
+  onDriverSelect,
+  onStats,
+}: AdminDriverListProps) {
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -65,6 +84,15 @@ export function AdminDriverMap({ onDriverSelect }: AdminDriverListProps) {
     }
   }, [])
 
+  // Report the driver count upwards for the stats cards (presentation only).
+  const statsRef = useRef(onStats)
+  useEffect(() => {
+    statsRef.current = onStats
+  })
+  useEffect(() => {
+    statsRef.current?.({ count: drivers.length, loading: isLoading })
+  }, [drivers, isLoading])
+
   const formatTime = (timestamp?: number) => {
     if (!timestamp) return "N/A"
     return new Date(timestamp).toLocaleTimeString("en-US", {
@@ -75,80 +103,167 @@ export function AdminDriverMap({ onDriverSelect }: AdminDriverListProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Users className="w-5 h-5 text-blue-400" />
-        <h3 className="text-lg font-semibold text-white">
-          Active Drivers ({drivers.length})
-        </h3>
-      </div>
+    <motion.div className="adm-card adm-card--hover" variants={fadeUp}>
+      <PanelHead
+        tone="info"
+        icon={<Users className="w-[18px] h-[18px]" strokeWidth={2.2} />}
+        title={
+          <>
+            Active Drivers <span className="adm-num">({drivers.length})</span>
+          </>
+        }
+        trailing={
+          !isLoading && drivers.length > 0 ? (
+            <span className="adm-chip">
+              <span className="adm-dot-live" />
+              Live
+            </span>
+          ) : null
+        }
+      />
 
       {isLoading ? (
-        <div className="bg-slate-700 rounded-lg p-4 border border-slate-600">
-          <p className="text-slate-400 text-center">Loading drivers...</p>
+        <div className="adm-card__body adm-stack">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="adm-skeleton--row" />
+          ))}
         </div>
       ) : drivers.length === 0 ? (
-        <div className="bg-slate-700 rounded-lg p-8 border border-slate-600 border-dashed flex items-center justify-center">
-          <p className="text-slate-400">No active drivers at the moment</p>
+        <div className="adm-card__body">
+          <EmptyState
+            icon={<Bus className="w-8 h-8" strokeWidth={1.5} />}
+            title="No active drivers at the moment"
+            description="Drivers will show up here as soon as they start sharing their location."
+          />
         </div>
       ) : (
-        <div className="bg-slate-700 rounded-lg border border-slate-600 overflow-hidden shadow-lg">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-800 border-b border-slate-600">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-300">
-                    Phone
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-300">
-                    Latitude
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-300">
-                    Longitude
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-300">
-                    Last Update
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-300">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-600">
-                {drivers.map((driver) => (
-                  <tr
-                    key={driver.phone}
-                    className="hover:bg-slate-600 transition-colors"
-                  >
-                    <td className="px-4 py-3 font-mono font-semibold text-blue-300">
+        <>
+          {/* ---------------------------------------------------- Mobile cards */}
+          <ul className="adm-card__body adm-list adm-only-mobile" role="list">
+            <AnimatePresence>
+              {drivers.map((driver, index) => (
+                <motion.li
+                  key={driver.phone}
+                  className="adm-driver"
+                  {...rowIn(index)}
+                >
+                  <span className="adm-avatar">
+                    {driverInitials(driver.phone)}
+                  </span>
+
+                  <div className="adm-driver__body">
+                    <div className="adm-driver__phone">
+                      <span className="adm-dot-live" />
                       {driver.phone}
-                    </td>
-                    <td className="px-4 py-3 text-slate-300">
-                      {driver.location.lat.toFixed(6)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-300">
-                      {driver.location.lng.toFixed(6)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-300 text-xs">
-                      {formatTime(driver.location.timestamp)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {onDriverSelect && (
-                        <button
-                          onClick={() => onDriverSelect(driver.phone)}
-                          className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
-                        >
-                          Select
-                        </button>
-                      )}
-                    </td>
+                    </div>
+                    <div className="adm-driver__meta">
+                      <span className="adm-coord">
+                        <MapPin className="w-3 h-3" strokeWidth={2} />
+                        {driver.location.lat.toFixed(6)},{" "}
+                        {driver.location.lng.toFixed(6)}
+                      </span>
+                      <span className="adm-coord">
+                        <Clock className="w-3 h-3" strokeWidth={2} />
+                        {formatTime(driver.location.timestamp)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {onDriverSelect && (
+                    <button
+                      type="button"
+                      onClick={() => onDriverSelect(driver.phone)}
+                      className="adm-btn adm-btn--select"
+                    >
+                      <Navigation className="w-3.5 h-3.5" strokeWidth={2.2} />
+                      Select
+                    </button>
+                  )}
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+
+          {/* --------------------------------------------------- Desktop table */}
+          <div className="adm-table-wrap adm-only-desktop">
+            <div className="adm-table-scroll">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>Phone</th>
+                    <th>Latitude</th>
+                    <th>Longitude</th>
+                    <th>Last Update</th>
+                    <th style={{ textAlign: "end" }}>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  <AnimatePresence>
+                    {drivers.map((driver, index) => (
+                      <motion.tr
+                        key={driver.phone}
+                        className="adm-row"
+                        {...rowIn(index)}
+                      >
+                        <td>
+                          <div className="adm-cell-user">
+                            <span className="adm-cell-user__name">
+                              <span
+                                className="adm-avatar"
+                                style={{
+                                  width: 30,
+                                  height: 30,
+                                  borderRadius: 10,
+                                  fontSize: 11,
+                                }}
+                              >
+                                {driverInitials(driver.phone)}
+                              </span>
+                              <span className="adm-driver__phone">
+                                {driver.phone}
+                              </span>
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="adm-coord adm-num">
+                            {driver.location.lat.toFixed(6)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="adm-coord adm-num">
+                            {driver.location.lng.toFixed(6)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="adm-time">
+                            {formatTime(driver.location.timestamp)}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "end" }}>
+                          {onDriverSelect && (
+                            <button
+                              type="button"
+                              onClick={() => onDriverSelect(driver.phone)}
+                              className="adm-btn adm-btn--select"
+                            >
+                              <Navigation
+                                className="w-3.5 h-3.5"
+                                strokeWidth={2.2}
+                              />
+                              Select
+                            </button>
+                          )}
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
-    </div>
+    </motion.div>
   )
 }
